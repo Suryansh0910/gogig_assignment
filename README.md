@@ -54,46 +54,59 @@ The system is designed around three principles:
 
 ## Architecture
 
-```
-┌─────────────┐     POST /upload      ┌──────────────────┐
-│   Client    │ ──────────────────▶  │   Upload API      │
-│             │ ◀──────────────────  │   (Express)       │
-│             │    { jobId }          └────────┬─────────┘
-└─────────────┘                               │
-                                              │ enqueue job
-                                              ▼
-                                    ┌──────────────────┐
-                                    │    Job Queue      │
-                                    │  (BullMQ + Redis) │
-                                    └────────┬─────────┘
-                                             │ dequeue
-                                             ▼
-                                    ┌──────────────────┐
-                                    │  Async Worker     │
-                                    │  (BullMQ Worker)  │
-                                    └────────┬─────────┘
-                                             │
-                        ┌────────────────────┼────────────────────┐
-                        ▼                    ▼                     ▼
-               ┌──────────────┐   ┌───────────────────┐  ┌──────────────────┐
-               │  Blur Check  │   │  Brightness Check  │  │  OCR / Plate     │
-               └──────────────┘   └───────────────────┘  └──────────────────┘
-               ┌──────────────┐   ┌───────────────────┐  ┌──────────────────┐
-               │  Duplicate   │   │  Screenshot Check  │  │  Tampering Check │
-               └──────────────┘   └───────────────────┘  └──────────────────┘
-                        │
-                        ▼
-                ┌───────────────┐
-                │   MongoDB     │
-                │  (jobs +      │
-                │   results)    │
-                └───────┬───────┘
-                        │
-                        ▼
-               ┌────────────────┐
-               │  Results API   │
-               │  GET /jobs/:id │
-               └────────────────┘
+```mermaid
+flowchart TD
+    Client(["Web Client / API Consumer"])
+    Client -- "POST /api/upload" --> API
+
+    subgraph API ["Express API Server"]
+        RateLimit["Rate Limiter\n(express-rate-limit)"]
+        Helmet["Security Headers\n(helmet)"]
+        SharpValidate["Dimension & Integrity Check\n(sharp validation)"]
+    end
+
+    API -- "Enqueue Job" --> Queue
+    API -- "Write metadata\nstatus: pending" --> MongoDB
+
+    subgraph Queue ["BullMQ Redis Queue"]
+        direction TB
+        Q1["Asynchronous Pickup\n3 attempts · exponential backoff"]
+    end
+
+    Queue --> Worker
+
+    subgraph Worker ["Independent Worker Service"]
+        direction TB
+        W1["Download image from S3"]
+        W1 --> W2["Run 6 Checks via Promise.allSettled"]
+        W2 --> W3["Save results to MongoDB"]
+        W3 --> W4["Emit completed / failed via Socket.io"]
+    end
+
+    subgraph Checks ["Image Processing Checks"]
+        direction LR
+        C1["Blur Detection\n(Laplacian + sharp)"]
+        C2["Brightness Analysis\n(mean pixel + sharp)"]
+        C3["Duplicate Detection\n(pHash + 7-day window)"]
+        C4["Screenshot Detection\n(EXIF + aspect ratio)"]
+        C5["OCR Plate Validation\n(AWS Rekognition)"]
+        C6["Tampering Detection\n(EXIF date + software)"]
+    end
+
+    W2 --> Checks
+
+    subgraph Storage ["AWS Cloud"]
+        S3["S3 Bucket\n(file storage)"]
+        Rekognition["AWS Rekognition\n(text detection)"]
+    end
+
+    API -- "multer-s3 upload" --> S3
+    W1 -- "download" --> S3
+    C5 -- "DetectText API" --> Rekognition
+
+    MongoDB[("MongoDB\njobs + analysis_results")]
+    W3 --> MongoDB
+    Client -- "GET /jobs/:id/results" --> MongoDB
 ```
 
 ---
@@ -344,6 +357,40 @@ Indexes:
 ```typescript
 { jobId: 1 }                  // fetch all checks for a job
 { jobId: 1, checkName: 1 }    // unique — one result per check per job
+```
+
+### Schema Diagram
+
+```mermaid
+erDiagram
+    JOBS {
+        ObjectId  _id
+        string    jobId       PK
+        string    filename
+        string    storedFilename
+        string    s3Key
+        string    s3Location
+        string    mimetype
+        number    fileSize
+        string    status
+        string    failureReason
+        string    pHash
+        Date      createdAt
+        Date      updatedAt
+        Date      completedAt
+    }
+
+    ANALYSIS_RESULTS {
+        ObjectId  _id
+        string    jobId       FK
+        string    checkName
+        boolean   passed
+        number    score
+        object    detail
+        Date      executedAt
+    }
+
+    JOBS ||--o{ ANALYSIS_RESULTS : "1 job → 6 check results"
 ```
 
 ### Why MongoDB
@@ -708,6 +755,54 @@ curl http://localhost:3000/jobs/64f3a1b2c8e4d5f6a7b8c9d0/results
   }
 }
 ```
+
+---
+
+## UI Walkthrough
+
+The following screenshots show the end-to-end flow of the web interface.
+
+### Step 1 — Landing Page
+Clean upload interface. Supports drag & drop or click-to-browse. Accepts JPEG, PNG, and WebP up to 10 MB.
+
+![Landing page with drag-and-drop upload](docs/screenshots/01.png)
+
+---
+
+### Step 2 — File Picker
+Native OS file picker opens on click. The user can browse and select any vehicle image.
+
+![File picker open, browsing Downloads folder](docs/screenshots/02.png)
+
+---
+
+### Step 3 — File Selected
+Selected file previewed in the file picker before confirming. Here a real Kia number plate (`RJ14CV0002`) WebP image is chosen.
+
+![File selected — RJ14CV0002 plate image preview](docs/screenshots/03.png)
+
+---
+
+### Step 4 — Uploading
+After clicking **Process Image**, the file is uploaded to S3 via the API. A spinner with "Uploading image..." confirms the multipart upload is in progress.
+
+![Uploading state with spinner](docs/screenshots/04.png)
+
+---
+
+### Step 5 — Processing
+Once the file is stored, a BullMQ job is enqueued and the worker picks it up. The UI shows the live Job ID and "Processing image..." status — updated in real-time via Socket.io.
+
+![Processing state showing Job ID](docs/screenshots/05.png)
+
+---
+
+### Step 6 — Analysis Results
+All 6 check results are displayed in a card grid. Each card shows the check name, score percentage, and key detail fields. The overall summary bar shows **5/6 checks passed** with an **80% overall score**.
+
+> Notable: **OCR Plate Validation** correctly extracted `RJ14CV0002` via AWS Rekognition. **Duplicate Detection** flagged this as a duplicate (Score: 0%) because the same image was submitted earlier in the session.
+
+![Full analysis results — 5/6 passed, 80% score](docs/screenshots/06.png)
 
 ---
 
