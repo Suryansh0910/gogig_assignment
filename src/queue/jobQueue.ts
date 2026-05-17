@@ -1,13 +1,16 @@
 import { Queue } from "bullmq";
 import Redis from "ioredis";
 
-const redisOptions = {
-  host: process.env.REDIS_HOST || "localhost",
-  port: parseInt(process.env.REDIS_PORT || "6379", 10),
-  maxRetriesPerRequest: null
-};
+// Render provides REDIS_URL; local dev uses REDIS_HOST + REDIS_PORT
+const redisConnection = process.env.REDIS_URL
+  ? new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: null, tls: {} })
+  : new Redis({
+      host: process.env.REDIS_HOST || "localhost",
+      port: parseInt(process.env.REDIS_PORT || "6379", 10),
+      maxRetriesPerRequest: null
+    });
 
-export const redisConnection = new Redis(redisOptions);
+export { redisConnection };
 
 export const imageQueue = new Queue("image-processing", {
   connection: redisConnection,
