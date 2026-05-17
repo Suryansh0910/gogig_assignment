@@ -772,3 +772,78 @@ This project was built with AI assistance. Here is an honest account of where an
 - Redis and MongoDB are available as external services (not embedded)
 - File size limit of 10MB covers typical mobile camera uploads; RAW files are out of scope
 - A "failed" job means the worker could not complete analysis (e.g. corrupted file, unreadable image), not that an image failed a quality check — quality check failures are reported inside `checks[]` with `passed: false`
+---
+
+## Edge Cases Encountered & Solutions Implemented
+
+### 1. AWS Rekognition Doesn't Support WebP
+**Problem:** Images uploaded as `.webp` files returned zero text detections from AWS Rekognition — no error, just an empty result. This was a silent failure that was hard to diagnose.
+
+**Investigation:** Added debug logging to print all Rekognition LINE detections to the worker console. On the next upload, the log showed no output at all, confirming Rekognition was returning empty results rather than throwing an error.
+
+**Solution:** Used `sharp().jpeg().toBuffer()` to convert any image to JPEG bytes in-memory before sending to Rekognition. This happens transparently — the original file in S3 is unchanged.
+
+---
+
+### 2. Duplicate Detection False Positives During Development
+**Problem:** The duplicate detector compared every new upload against *all historical jobs in the database forever*. When testing the same image repeatedly, every upload after the first was flagged as a duplicate — making it impossible to test the full pipeline.
+
+**Solution:** Added a configurable `DUPLICATE_WINDOW_DAYS` (default: 7 days) to scope duplicate comparisons to a recent time window. Also created a `npm run db:reset` script (`scripts/reset-db.js`) to clear all jobs between test runs.
+
+**Why this is correct in production:** A vehicle image from 6 months ago should not block a new inspection submission. The window is intentionally configurable so business rules can adjust it without code changes.
+
+---
+
+### 3. OCR Regex Missing Bharat Series (BH) Plates
+**Problem:** Our original regex `^[A-Z]{2}[0-9]{2}[A-Z]{1,2}[0-9]{4}$` only matched traditional state-coded plates (e.g. `MH01AB1234`). India introduced a new **Bharat Series** format (`22BH6517A`) in 2021 for pan-India vehicle registration. This format doesn't have a state prefix.
+
+**Solution:** Updated the regex to support both formats:
+```
+([A-Z]{2}[0-9]{2}[A-Z]{1,2}[0-9]{4}|[0-9]{2}BH[0-9]{4}[A-Z]{1,2})
+```
+
+---
+
+### 4. AWS Rekognition Detecting Text With Spaces (Breaking Regex Match)
+**Problem:** Rekognition returned `"RJ14CV0002 R"` (with a space in the middle) for a license plate. Our regex expected a contiguous string with no spaces, so `RJ14CV0002 R` failed to match even though it was correct.
+
+**Solution:** Strip all whitespace from each Rekognition LINE detection before applying the regex:
+```ts
+const noSpaces = line.replace(/\s+/g, "");
+const match = noSpaces.match(PLATE_REGEX);
+```
+
+---
+
+### 5. Hard Image Binarization Destroyed OCR Quality
+**Problem:** Applied `sharp().threshold(128)` (hard binary black/white) to preprocess images before OCR, expecting it to improve text contrast. Instead, it produced completely garbled output like `BALYETYEE` — destroying character shapes by forcing every pixel to either pure black or pure white.
+
+**Root Cause:** Tesseract already uses an adaptive Otsu binarization algorithm internally. Applying a hard global threshold before Tesseract removed the gradient information that its internal binarizer relies on.
+
+**Solution:** Removed `.threshold()` entirely. Used only `.greyscale().normalize()` for gentle preprocessing, and switched to AWS Rekognition for production-quality OCR.
+
+---
+
+### 6. Confusing "Score: 100%" on a Failed Duplicate Check
+**Problem:** When a duplicate was detected, the UI showed `Score: 100%` with a red "failed" border. This was misleading — a 100% score looks like success.
+
+**Root Cause:** The score formula `1.0 - (hammingDistance / 64)` meant a distance of 0 (exact duplicate) produced a score of 1.0, not 0.0.
+
+**Solution:** Flipped the formula: `score = hammingDistance / 64`. Now an exact duplicate (distance=0) correctly shows `Score: 0%` which is intuitively correct.
+
+---
+
+### 7. Duplicate Index Warning in MongoDB
+**Problem:** Mongoose logged a warning on startup: `Duplicate schema index on {"jobId":1}`. This was because `jobId: { unique: true }` in the schema definition already creates an index, and we had also called `jobSchema.index({ jobId: 1 })` separately.
+
+**Solution:** Removed the redundant `jobSchema.index({ jobId: 1 })` call. The `unique: true` option implicitly creates the index.
+
+---
+
+### 8. CI Pipeline Failing Due to Missing Jest TypeScript Types
+**Problem:** GitHub Actions CI ran `npm run test` and TypeScript threw errors like `Cannot find name 'expect'` and `Cannot find name 'jest'`, even though tests passed locally.
+
+**Root Cause:** The `tsconfig.json` did not have `"types": ["node", "jest"]`, so the TypeScript compiler in CI didn't know about Jest's global type declarations.
+
+**Solution:** Added `"types": ["node", "jest"]` to `tsconfig.json`. All 3 tests now pass in CI.
+
