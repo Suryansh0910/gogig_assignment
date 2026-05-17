@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Environment - NEVER commit credentials
+.env
+
+# Build output
+dist/
+
+# Uploads (local storage)
+uploads/
+
+# Tesseract training data (large binary)
+*.traineddata
+
+# Temp files
+create_bucket.js
+
+# Logs
+*.log
+
+# macOS
+.DS_Store

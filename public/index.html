@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intelligent Media Pipeline</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --glass-bg: rgba(30, 41, 59, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --success: #10b981;
+            --danger: #ef4444;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.1) 0px, transparent 50%);
+            color: var(--text-main);
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+            box-sizing: border-box;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 3rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            transition: all 0.3s ease;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-top: 0;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(to right, #60a5fa, #34d399);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-align: center;
+        }
+
+        p.subtitle {
+            text-align: center;
+            color: var(--text-muted);
+            margin-bottom: 2.5rem;
+        }
+
+        .upload-area {
+            border: 2px dashed var(--glass-border);
+            border-radius: 16px;
+            padding: 3rem 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: rgba(15, 23, 42, 0.4);
+        }
+
+        .upload-area:hover, .upload-area.dragover {
+            border-color: var(--primary);
+            background: rgba(59, 130, 246, 0.05);
+        }
+
+        .upload-area input[type="file"] {
+            display: none;
+        }
+
+        .upload-area svg {
+            width: 48px;
+            height: 48px;
+            color: var(--primary);
+            margin-bottom: 1rem;
+        }
+
+        .btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s ease, transform 0.1s ease;
+            margin-top: 1.5rem;
+            width: 100%;
+        }
+
+        .btn:hover {
+            background: var(--primary-hover);
+        }
+
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        .btn:disabled {
+            background: var(--text-muted);
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        #status-container {
+            margin-top: 2rem;
+            display: none;
+            text-align: center;
+        }
+
+        .loader {
+            border: 4px solid var(--glass-border);
+            border-top: 4px solid var(--primary);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        #results-container {
+            margin-top: 2.5rem;
+            display: none;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .summary-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+        }
+
+        .summary-stat {
+            text-align: center;
+        }
+
+        .summary-stat span {
+            display: block;
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            margin-bottom: 0.25rem;
+        }
+
+        .summary-stat strong {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .check-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 1rem;
+        }
+
+        .check-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--glass-border);
+            border-left: 4px solid var(--text-muted);
+            border-radius: 8px;
+            padding: 1.25rem;
+            transition: transform 0.2s;
+        }
+
+        .check-card:hover {
+            transform: translateY(-2px);
+        }
+
+        .check-card.passed {
+            border-left-color: var(--success);
+        }
+
+        .check-card.failed {
+            border-left-color: var(--danger);
+        }
+
+        .check-name {
+            font-weight: 600;
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+            text-transform: capitalize;
+        }
+
+        .check-score {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+        }
+
+        #file-name-display {
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            color: #34d399;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Media Processing AI</h1>
+        <p class="subtitle">Upload a vehicle image for deep analysis & validation.</p>
+
+        <div class="upload-area" id="drop-area" onclick="document.getElementById('file-input').click()">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+            <h3 style="margin:0; font-weight: 600;">Drag & Drop or Click to Upload</h3>
+            <p style="margin: 0.5rem 0 0; color: var(--text-muted); font-size: 0.9rem;">JPEG, PNG, WEBP up to 10MB</p>
+            <div id="file-name-display"></div>
+            <input type="file" id="file-input" accept="image/jpeg, image/png, image/webp">
+        </div>
+
+        <button class="btn" id="upload-btn" disabled>Process Image</button>
+
+        <div id="status-container">
+            <div class="loader"></div>
+            <h3 id="status-text">Processing in background...</h3>
+            <p id="status-subtext" style="color: var(--text-muted); font-size: 0.9rem;"></p>
+        </div>
+
+        <div id="results-container">
+            <h2 style="margin-top: 0; text-align: center;">Analysis Results</h2>
+            <div class="summary-card" id="summary-card">
+                <!-- Summary injected here -->
+            </div>
+            <div class="check-grid" id="check-grid">
+                <!-- Checks injected here -->
+            </div>
+            <button class="btn" onclick="resetUI()" style="margin-top: 2rem; background: transparent; border: 1px solid var(--glass-border);">Analyze Another Image</button>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const fileInput = document.getElementById('file-input');
+        const dropArea = document.getElementById('drop-area');
+        const uploadBtn = document.getElementById('upload-btn');
+        const fileNameDisplay = document.getElementById('file-name-display');
+        
+        const statusContainer = document.getElementById('status-container');
+        const statusText = document.getElementById('status-text');
+        const statusSubtext = document.getElementById('status-subtext');
+        
+        const resultsContainer = document.getElementById('results-container');
+        const summaryCard = document.getElementById('summary-card');
+        const checkGrid = document.getElementById('check-grid');
+
+        let selectedFile = null;
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                selectedFile = e.target.files[0];
+                updateFileDisplay();
+            }
+        });
+
+        dropArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropArea.classList.add('dragover');
+        });
+
+        dropArea.addEventListener('dragleave', () => {
+            dropArea.classList.remove('dragover');
+        });
+
+        dropArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropArea.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                selectedFile = e.dataTransfer.files[0];
+                updateFileDisplay();
+            }
+        });
+
+        function updateFileDisplay() {
+            fileNameDisplay.textContent = `Selected: ${selectedFile.name}`;
+            uploadBtn.disabled = false;
+            resultsContainer.style.display = 'none';
+            statusContainer.style.display = 'none';
+        }
+
+        function resetUI() {
+            selectedFile = null;
+            fileInput.value = '';
+            fileNameDisplay.textContent = '';
+            uploadBtn.disabled = true;
+            resultsContainer.style.display = 'none';
+            statusContainer.style.display = 'none';
+        }
+
+        uploadBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+
+            const formData = new FormData();
+            formData.append('image', selectedFile);
+
+            uploadBtn.disabled = true;
+            statusContainer.style.display = 'block';
+            statusText.textContent = "Uploading image...";
+            statusSubtext.textContent = "";
+            resultsContainer.style.display = 'none';
+
+            try {
+                const res = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+
+                if (!res.ok) throw new Error(data.error || 'Upload failed');
+
+                const jobId = data.jobId;
+                listenForStatus(jobId);
+
+            } catch (err) {
+                statusText.textContent = "Error";
+                statusSubtext.textContent = err.message;
+                statusSubtext.style.color = "var(--danger)";
+                document.querySelector('.loader').style.display = 'none';
+                uploadBtn.disabled = false;
+            }
+        });
+
+        function listenForStatus(jobId) {
+            statusText.textContent = "Processing image...";
+            statusSubtext.textContent = `Job ID: ${jobId}`;
+            statusSubtext.style.color = "var(--text-muted)";
+            document.querySelector('.loader').style.display = 'block';
+
+            socket.emit('subscribe', jobId);
+
+            socket.on('job-completed', (data) => {
+                if (data.jobId === jobId) {
+                    fetchResults(jobId);
+                }
+            });
+
+            socket.on('job-failed', (data) => {
+                if (data.jobId === jobId) {
+                    fetchFailure(jobId);
+                }
+            });
+        }
+
+        async function fetchFailure(jobId) {
+            try {
+                const res = await fetch(`/jobs/${jobId}/failure`);
+                const data = await res.json();
+                
+                statusText.textContent = "Processing Failed";
+                statusSubtext.textContent = data.failureReason || "Unknown error occurred.";
+                statusSubtext.style.color = "var(--danger)";
+                document.querySelector('.loader').style.display = 'none';
+                uploadBtn.disabled = false;
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function fetchResults(jobId) {
+            try {
+                const res = await fetch(`/jobs/${jobId}/results`);
+                const data = await res.json();
+                
+                statusContainer.style.display = 'none';
+                renderResults(data);
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        function renderResults(data) {
+            resultsContainer.style.display = 'block';
+            
+            summaryCard.innerHTML = `
+                <div class="summary-stat">
+                    <span>Overall Score</span>
+                    <strong style="color: ${data.summary.overallScore > 0.7 ? 'var(--success)' : (data.summary.overallScore > 0.4 ? '#f59e0b' : 'var(--danger)')}">
+                        ${(data.summary.overallScore * 100).toFixed(0)}%
+                    </strong>
+                </div>
+                <div class="summary-stat">
+                    <span>Checks Passed</span>
+                    <strong>${data.summary.passed} / ${data.summary.totalChecks}</strong>
+                </div>
+                <div class="summary-stat">
+                    <span>File</span>
+                    <strong style="font-size: 1rem;">${data.filename.substring(0, 15)}${data.filename.length > 15 ? '...' : ''}</strong>
+                </div>
+            `;
+
+            checkGrid.innerHTML = data.checks.map(check => `
+                <div class="check-card ${check.passed ? 'passed' : 'failed'}">
+                    <div class="check-name">${check.name.replace(/_/g, ' ')}</div>
+                    <div class="check-score">Score: ${(check.score * 100).toFixed(0)}%</div>
+                    <div style="margin-top: 0.75rem; font-size: 0.85rem; color: var(--text-main); word-break: break-word;">
+                        ${Object.entries(check.detail).slice(0, 4).map(([k, v]) => `<div><span style="color:var(--text-muted)">${k}:</span> ${v}</div>`).join('')}
+                    </div>
+                </div>
+            `).join('');
+        }
+    </script>
+</body>
+</html>
