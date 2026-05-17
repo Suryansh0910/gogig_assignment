@@ -20,10 +20,12 @@
 - [Environment Variables](#environment-variables)
 - [Docker Setup](#docker-setup)
 - [Sample API Requests & Responses](#sample-api-requests--responses)
+- [UI Walkthrough](#ui-walkthrough)
 - [AI Usage Disclosure](#ai-usage-disclosure)
 - [Trade-offs & Design Decisions](#trade-offs--design-decisions)
 - [What I Would Improve](#what-i-would-improve)
 - [Assumptions Made](#assumptions-made)
+- [Edge Cases Encountered & Solutions Implemented](#edge-cases-encountered--solutions-implemented)
 
 ---
 
@@ -554,16 +556,21 @@ Checks run in parallel. If one check throws, it is recorded with `passed: false`
 
 | Layer | Technology | Reason |
 |-------|-----------|--------|
-| Runtime | Node.js + TypeScript | Strong typing, great ecosystem for async I/O |
+| Runtime | Node.js 18 + TypeScript | Strong typing, great ecosystem for async I/O |
 | HTTP framework | Express | Lightweight, minimal boilerplate |
-| Queue | BullMQ | Durable, Redis-backed, built-in retries |
-| Cache / Queue backend | Redis | Required by BullMQ; also used for pHash cache |
+| Security | helmet + express-rate-limit | HTTP headers hardening + endpoint flood protection |
+| Queue | BullMQ | Durable, Redis-backed, built-in exponential retry |
+| Queue backend | Redis | Required by BullMQ; fast in-memory broker |
 | Database | MongoDB (via Mongoose) | Flexible schema fits variable check output shapes |
-| Image processing | Sharp | Fast native bindings, metadata + pixel stats |
-| OCR | Tesseract.js | No external service required, runs locally |
-| EXIF parsing | exifr | Lightweight, async, browser + Node compatible |
-| File upload | Multer | Standard Express file upload middleware |
+| Image processing | Sharp | Fast native bindings for pixel stats + format conversion |
+| OCR | AWS Rekognition | Cloud-grade text detection; handles real plates reliably |
+| Cloud storage | AWS S3 (via multer-s3) | Persistent, stateless file storage across worker instances |
+| EXIF parsing | exifr | Lightweight async EXIF reader for tampering/screenshot checks |
+| Real-time updates | Socket.io | Push job status to UI without polling |
+| File upload | Multer | Standard Express multipart middleware |
 | Logging | Pino | Structured JSON logging, low overhead |
+| Testing | Jest + ts-jest | Unit tests for analysis modules with mocked sharp |
+| CI | GitHub Actions | Automated test + lint on every push |
 
 ---
 
