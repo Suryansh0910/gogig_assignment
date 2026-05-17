@@ -151,28 +151,13 @@ pending ──▶ processing ──▶ completed
 BullMQ was chosen over an in-memory queue for the following reasons:
 
 - **Durability** — jobs survive server restarts (Redis persistence)
-- **Retry logic** — built-in exponential backoff with configurable attempts
-- **Concurrency control** — worker concurrency is a single config value
+- **Retry logic** — built-in exponential backoff; 3 attempts with 2s base delay
+- **Concurrency control** — worker concurrency is a single env var (`WORKER_CONCURRENCY`)
 - **Visibility** — job state (waiting, active, completed, failed) is queryable from Redis
 - **No infrastructure overhead** — Redis is the only extra dependency
 
-Queue configuration:
-
-```typescript
-const imageQueue = new Queue("image-processing", {
-  connection: redisConnection,
-  defaultJobOptions: {
-    attempts: 3,
-    backoff: { type: "exponential", delay: 2000 },
-    removeOnComplete: 100,  // keep last 100 completed jobs in Redis
-    removeOnFail: 200,
-  },
-});
-```
-
-Worker concurrency is set to `3` by default — enough for local use, configurable via `WORKER_CONCURRENCY` env var.
-
 ---
+
 
 ## API Reference
 
@@ -653,55 +638,10 @@ docker-compose up -d
 docker-compose down
 ```
 
-### `docker-compose.yml`
-
-```yaml
-version: "3.9"
-
-services:
-  api:
-    build: .
-    command: npm run start
-    ports:
-      - "3000:3000"
-    environment:
-      - MONGODB_URI=mongodb://mongo:27017/media_pipeline
-      - REDIS_HOST=redis
-    volumes:
-      - ./uploads:/app/uploads
-    depends_on:
-      - mongo
-      - redis
-
-  worker:
-    build: .
-    command: npm run worker
-    environment:
-      - MONGODB_URI=mongodb://mongo:27017/media_pipeline
-      - REDIS_HOST=redis
-    volumes:
-      - ./uploads:/app/uploads
-    depends_on:
-      - mongo
-      - redis
-
-  mongo:
-    image: mongo:7
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-
-volumes:
-  mongo_data:
-```
+Full service definitions are in [`docker-compose.yml`](docker-compose.yml) at the project root. The compose file runs four containers: `api`, `worker`, `mongo`, and `redis`, sharing a named volume for file persistence.
 
 ---
+
 
 ## Sample API Requests & Responses
 
@@ -841,16 +781,21 @@ This project was built with AI assistance. Here is an honest account of where an
 
 ## Trade-offs & Design Decisions
 
-| Decision | What was simplified | Reason |
-|----------|-------------------|--------|
-| Local file storage | Used `./uploads/` on disk instead of S3/GCS | Avoids cloud credentials setup for local evaluation |
-| SQLite fallback skipped | MongoDB only — no fallback | Keeping the stack consistent; Mongoose handles connection errors gracefully |
-| In-process Tesseract | No dedicated OCR microservice | Simpler deployment; acceptable for the volume expected in this context |
-| No auth/rate limiting | No API keys or IP limits | Out of scope for this assignment; noted as a production concern |
-| Single worker process | All checks in one Node process | Sufficient for evaluation; production would split into dedicated workers per check type |
-| pHash stored in jobs collection | No dedicated hash index store | Simpler schema; a dedicated collection with geospatial-style index would be better at scale |
+| Decision | Alternative Considered | Why This Was Chosen |
+|----------|----------------------|--------------------|
+| **AWS Rekognition** for OCR | Tesseract.js (local) | Rekognition handles real-world Indian plates reliably; Tesseract produced garbled output on real photos |
+| **AWS S3** for file storage | Local `./uploads/` disk | S3 makes workers stateless and horizontally scalable; disk fails across multi-instance deploys |
+| **WebP → JPEG conversion** before OCR | Send raw WebP to Rekognition | Rekognition silently returns empty results for WebP; in-memory conversion avoids changing the stored file |
+| **pHash in `jobs` collection** | Dedicated hash collection | Simpler schema; acceptable at this scale; a geospatial-style index would be better at millions of records |
+| **7-day duplicate window** | Compare against all-time history | Historical images shouldn't block new legitimate submissions; window is env-configurable |
+| **Socket.io for status updates** | HTTP polling | Push eliminates wasted requests; real-time UX with no added infrastructure |
+| **Single BullMQ worker process** | One worker per check type | Sufficient for this scale; splitting would add deployment complexity with minimal benefit here |
+| **Helmet + rate-limit on API** | No middleware | Minimal-cost hardening; prevents header leakage and brute-force floods |
+| **Promise.allSettled for checks** | Sequential checks / Promise.all | One failing check doesn't abort others; all results are always collected |
+| **Jest + ts-jest for tests** | No tests / Mocha | Jest works with TypeScript via ts-jest and requires zero config after setup |
 
 ---
+
 
 ## What I Would Improve
 
@@ -874,7 +819,9 @@ This project was built with AI assistance. Here is an honest account of where an
 - Redis and MongoDB are available as external services (not embedded)
 - File size limit of 10MB covers typical mobile camera uploads; RAW files are out of scope
 - A "failed" job means the worker could not complete analysis (e.g. corrupted file, unreadable image), not that an image failed a quality check — quality check failures are reported inside `checks[]` with `passed: false`
+
 ---
+
 
 ## Edge Cases Encountered & Solutions Implemented
 
