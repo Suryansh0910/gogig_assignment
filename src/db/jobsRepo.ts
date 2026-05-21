@@ -39,3 +39,10 @@ export async function updateJobStatus(jobId: string, status: JobDocument["status
     { new: true }
   ).lean();
 }
+
+export async function getAllJobs(limit = 50): Promise<JobDocument[]> {
+  return JobModel.find({ status: { $in: ["completed", "failed"] } })
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .lean();
+}

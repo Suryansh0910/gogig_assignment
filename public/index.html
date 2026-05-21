@@ -332,6 +332,170 @@
             color: #34d399;
             font-weight: 600;
         }
+
+        /* ── Gallery ── */
+        #gallery-section {
+            margin-top: 3rem;
+            display: none;
+        }
+
+        .gallery-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.25rem;
+        }
+
+        .gallery-header h2 { margin: 0; font-size: 1.3rem; }
+
+        .gallery-refresh {
+            background: transparent;
+            border: 1px solid var(--glass-border);
+            color: var(--text-muted);
+            padding: 0.4rem 0.9rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.82rem;
+            transition: border-color 0.2s, color 0.2s;
+        }
+
+        .gallery-refresh:hover { border-color: var(--primary); color: var(--primary); }
+
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1rem;
+        }
+
+        .gallery-card {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            overflow: hidden;
+            transition: transform 0.2s, border-color 0.2s;
+            cursor: pointer;
+        }
+
+        .gallery-card:hover { transform: translateY(-3px); border-color: rgba(255,255,255,0.2); }
+
+        .gallery-card.has-duplicate { border-color: rgba(239,68,68,0.4); }
+
+        .gallery-thumb {
+            width: 100%;
+            height: 160px;
+            object-fit: cover;
+            display: block;
+            background: rgba(0,0,0,0.3);
+        }
+
+        .gallery-thumb-placeholder {
+            width: 100%;
+            height: 160px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.2);
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+
+        .gallery-body { padding: 1rem; }
+
+        .gallery-filename {
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-bottom: 0.4rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .gallery-meta {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            margin-bottom: 0.75rem;
+        }
+
+        .gallery-scores {
+            display: flex;
+            gap: 0.4rem;
+            flex-wrap: wrap;
+            margin-bottom: 0.75rem;
+        }
+
+        .gallery-check-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .gallery-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .duplicate-banner {
+            background: rgba(239,68,68,0.1);
+            border: 1px solid rgba(239,68,68,0.3);
+            border-radius: 6px;
+            padding: 0.4rem 0.6rem;
+            font-size: 0.75rem;
+            color: #ef4444;
+            margin-top: 0.6rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .duplicate-link {
+            color: #f87171;
+            text-decoration: underline;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.75);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+
+        .modal-overlay.open { display: flex; }
+
+        .modal-box {
+            background: #1e293b;
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            max-width: 700px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: 2rem;
+            position: relative;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.4rem;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .modal-close:hover { color: var(--text-main); }
     </style>
 </head>
 <body>
@@ -365,6 +529,22 @@
                 <!-- Checks injected here -->
             </div>
             <button class="btn" onclick="resetUI()" style="margin-top: 2rem; background: transparent; border: 1px solid var(--glass-border);">Analyze Another Image</button>
+        </div>
+
+        <div id="gallery-section">
+            <div class="gallery-header">
+                <h2>Processed Images</h2>
+                <button class="gallery-refresh" onclick="loadGallery()">↻ Refresh</button>
+            </div>
+            <div class="gallery-grid" id="gallery-grid"></div>
+        </div>
+    </div>
+
+    <!-- Detail modal -->
+    <div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
+        <div class="modal-box" id="modal-box">
+            <button class="modal-close" onclick="closeModal()">✕</button>
+            <div id="modal-content"></div>
         </div>
     </div>
 
@@ -652,6 +832,139 @@
                 `;
             }).join('');
         }
+
+        // ── Gallery ──────────────────────────────────────────────
+        let allJobsCache = [];
+
+        async function loadGallery() {
+            try {
+                const res = await fetch('/jobs');
+                const data = await res.json();
+                allJobsCache = data.jobs || [];
+                renderGallery(allJobsCache);
+                document.getElementById('gallery-section').style.display = allJobsCache.length ? 'block' : 'none';
+            } catch (e) {
+                console.error('Gallery load failed', e);
+            }
+        }
+
+        function renderGallery(jobs) {
+            const grid = document.getElementById('gallery-grid');
+            if (!jobs.length) { grid.innerHTML = '<p style="color:var(--text-muted)">No processed images yet.</p>'; return; }
+
+            grid.innerHTML = jobs.map(job => {
+                const dupCheck = job.checks.find(c => c.name === 'duplicate_detection');
+                const isDup = dupCheck?.detail?.isDuplicate;
+                const dupJobId = dupCheck?.detail?.duplicateJobId;
+                const dupJob = dupJobId ? allJobsCache.find(j => j.jobId === dupJobId) : null;
+
+                const scoreColor = getScoreColor(job.summary.overallScore);
+                const score = job.status === 'completed' ? (job.summary.overallScore * 100).toFixed(0) + '%' : job.status;
+                const date = new Date(job.uploadedAt).toLocaleString();
+
+                const thumb = job.storageUrl
+                    ? `<img class="gallery-thumb" src="${job.storageUrl}" alt="${job.filename}" onerror="this.outerHTML='<div class=gallery-thumb-placeholder>No preview</div>'">`
+                    : `<div class="gallery-thumb-placeholder">Local storage — no preview</div>`;
+
+                const dots = job.checks.map(c =>
+                    `<div class="gallery-check-dot" title="${CHECK_LABELS[c.name] || c.name}: ${c.passed ? 'passed' : 'failed'}"
+                          style="background:${c.passed ? 'var(--success)' : 'var(--danger)'}"></div>`
+                ).join('');
+
+                const dupBanner = isDup ? `
+                    <div class="duplicate-banner">
+                        ⚠ Duplicate of
+                        <span class="duplicate-link" onclick="event.stopPropagation(); openModal('${dupJobId}')">
+                            ${dupJob ? dupJob.filename.substring(0, 20) + (dupJob.filename.length > 20 ? '…' : '') : dupJobId.substring(0, 8) + '…'}
+                        </span>
+                    </div>` : '';
+
+                return `
+                    <div class="gallery-card ${isDup ? 'has-duplicate' : ''}" onclick="openModal('${job.jobId}')">
+                        ${thumb}
+                        <div class="gallery-body">
+                            <div class="gallery-filename" title="${job.filename}">${job.filename}</div>
+                            <div class="gallery-meta">${date}</div>
+                            <div class="gallery-scores">${dots}</div>
+                            <div class="gallery-footer">
+                                <span style="font-size:0.85rem; color:${scoreColor}; font-weight:700">${score}</span>
+                                <span style="font-size:0.75rem; color:var(--text-muted)">${job.summary.passed ?? 0}/${job.summary.totalChecks ?? 0} passed</span>
+                            </div>
+                            ${dupBanner}
+                        </div>
+                    </div>`;
+            }).join('');
+        }
+
+        function openModal(jobId) {
+            const job = allJobsCache.find(j => j.jobId === jobId);
+            if (!job) return;
+
+            const dupCheck = job.checks.find(c => c.name === 'duplicate_detection');
+            const dupJobId = dupCheck?.detail?.duplicateJobId;
+            const dupJob = dupJobId ? allJobsCache.find(j => j.jobId === dupJobId) : null;
+
+            const thumb = job.storageUrl
+                ? `<img src="${job.storageUrl}" style="width:100%;border-radius:8px;margin-bottom:1.5rem;max-height:300px;object-fit:cover" onerror="this.style.display='none'">`
+                : '';
+
+            const dupSection = dupJob ? `
+                <div style="margin-bottom:1.5rem">
+                    <h3 style="margin:0 0 0.75rem; color:var(--danger); font-size:1rem">⚠ Duplicate of</h3>
+                    <div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:8px;padding:1rem;display:flex;gap:1rem;align-items:center">
+                        ${dupJob.storageUrl ? `<img src="${dupJob.storageUrl}" style="width:80px;height:60px;object-fit:cover;border-radius:6px;flex-shrink:0" onerror="this.style.display='none'">` : ''}
+                        <div>
+                            <div style="font-weight:600;font-size:0.9rem">${dupJob.filename}</div>
+                            <div style="font-size:0.78rem;color:var(--text-muted);margin-top:0.2rem">${new Date(dupJob.uploadedAt).toLocaleString()}</div>
+                            <div style="font-size:0.78rem;color:var(--text-muted)">Hash distance: ${dupCheck.detail.minDistance}</div>
+                        </div>
+                    </div>
+                </div>` : (dupJobId ? `<div class="duplicate-banner" style="margin-bottom:1rem">⚠ Duplicate of job ${dupJobId.substring(0,8)}… (not in recent history)</div>` : '');
+
+            const checksHtml = job.checks.map(check => {
+                const label = CHECK_LABELS[check.name] || check.name.replace(/_/g, ' ');
+                const engineBadge = getEngineBadge(check.detail);
+                const score = (check.score * 100).toFixed(0);
+                const scoreColor = getScoreColor(check.score);
+                return `
+                    <div class="check-card ${check.passed ? 'passed' : 'failed'}" style="margin-bottom:0.75rem">
+                        <div class="check-name">${label}${engineBadge}</div>
+                        <div class="check-score">Score: ${score}%</div>
+                        <div class="score-bar-wrap"><div class="score-bar" style="width:${score}%;background:${scoreColor}"></div></div>
+                        <div>${renderDetailRows(check.detail)}</div>
+                    </div>`;
+            }).join('');
+
+            document.getElementById('modal-content').innerHTML = `
+                ${thumb}
+                <h2 style="margin:0 0 0.25rem">${job.filename}</h2>
+                <p style="color:var(--text-muted);font-size:0.85rem;margin:0 0 1.5rem">${new Date(job.uploadedAt).toLocaleString()}</p>
+                <div class="summary-card" style="margin-bottom:1.5rem">
+                    <div class="summary-stat"><span>Score</span><strong style="color:${getScoreColor(job.summary.overallScore)}">${(job.summary.overallScore*100).toFixed(0)}%</strong></div>
+                    <div class="summary-stat"><span>Passed</span><strong>${job.summary.passed}/${job.summary.totalChecks}</strong></div>
+                    <div class="summary-stat"><span>Storage</span><strong style="font-size:0.9rem">${job.storageBackend === 's3' ? '<span class="badge badge-s3">AWS S3</span>' : '<span class="badge badge-local">Local</span>'}</strong></div>
+                </div>
+                ${dupSection}
+                <h3 style="margin:0 0 1rem;font-size:1rem">Check Results</h3>
+                ${checksHtml}
+            `;
+            document.getElementById('modal-overlay').classList.add('open');
+        }
+
+        function closeModal(e) {
+            if (e && e.target !== document.getElementById('modal-overlay') && e.type !== 'click') return;
+            if (e && e.currentTarget === document.getElementById('modal-overlay') && e.target !== e.currentTarget) return;
+            document.getElementById('modal-overlay').classList.remove('open');
+        }
+
+        // Load gallery on page load and after each completed job
+        loadGallery();
+
+        const _origRenderResults = renderResults;
+        renderResults = function(data) {
+            _origRenderResults(data);
+            loadGallery();
+        };
     </script>
 </body>
 </html>

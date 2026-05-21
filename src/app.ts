@@ -11,6 +11,7 @@ import { uploadHandler } from "./api/upload";
 import { statusHandler } from "./api/status";
 import { resultsHandler } from "./api/results";
 import { failureHandler } from "./api/failure";
+import { allJobsHandler } from "./api/allJobs";
 
 const app = express();
 
@@ -32,6 +33,7 @@ app.use(pinoHttp());
 app.use(express.static(path.join(__dirname, "../public")));
 
 app.post("/upload", apiLimiter, uploadHandler);
+app.get("/jobs", allJobsHandler);
 app.get("/jobs/:id/status", statusHandler);
 app.get("/jobs/:id/results", resultsHandler);
 app.get("/jobs/:id/failure", failureHandler);
