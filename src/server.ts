@@ -5,11 +5,13 @@ import http from "http";
 import { Server } from "socket.io";
 import { QueueEvents } from "bullmq";
 import { redisConnection } from "./queue/jobQueue";
+import { startWorker } from "./workers/imageWorker";
 
 const logger = pino({ name: "server" });
 
 async function startServer() {
   await connectDB();
+  startWorker();
 
   const server = http.createServer(app);
   const io = new Server(server);

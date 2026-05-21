@@ -135,6 +135,8 @@ async function startWorker() {
   logger.info("Worker started and listening for jobs...");
 }
 
+export { startWorker };
+
 if (require.main === module) {
   startWorker();
 }
