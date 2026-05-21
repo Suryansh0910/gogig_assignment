@@ -2,8 +2,9 @@ import { Queue } from "bullmq";
 import Redis from "ioredis";
 
 // Render provides REDIS_URL; local dev uses REDIS_HOST + REDIS_PORT
+const useTLS = process.env.REDIS_URL?.startsWith("rediss://");
 const redisConnection = process.env.REDIS_URL
-  ? new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: null, tls: {} })
+  ? new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: null, ...(useTLS ? { tls: {} } : {}) })
   : new Redis({
       host: process.env.REDIS_HOST || "localhost",
       port: parseInt(process.env.REDIS_PORT || "6379", 10),
