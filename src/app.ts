@@ -36,4 +36,11 @@ app.get("/jobs/:id/status", statusHandler);
 app.get("/jobs/:id/results", resultsHandler);
 app.get("/jobs/:id/failure", failureHandler);
 
+// Global JSON error handler — prevents Express sending HTML error pages
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const status = err.status || err.statusCode || 500;
+  const message = err.message || "Internal server error";
+  res.status(status).json({ error: message });
+});
+
 export { app };

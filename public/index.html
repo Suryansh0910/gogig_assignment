@@ -444,7 +444,9 @@
                     method: 'POST',
                     body: formData
                 });
-                const data = await res.json();
+                const text = await res.text();
+                let data;
+                try { data = JSON.parse(text); } catch { throw new Error('Server error: ' + text.replace(/<[^>]+>/g, '').trim().substring(0, 120)); }
 
                 if (!res.ok) throw new Error(data.error || 'Upload failed');
 
