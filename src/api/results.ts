@@ -30,12 +30,16 @@ export const resultsHandler = async (req: Request, res: Response): Promise<void>
 
     const passedChecks = checks.filter(c => c.passed).length;
 
+    const isS3 = job.filepath && (job.filepath.includes(".amazonaws.com") || job.filepath.startsWith("s3://"));
+
     res.status(200).json({
       jobId: job.jobId,
       status: job.status,
       filename: job.filename,
       uploadedAt: job.createdAt,
       completedAt: job.completedAt,
+      storageBackend: isS3 ? "s3" : "local",
+      storageUrl: isS3 ? job.filepath : null,
       checks: formattedChecks,
       summary: {
         totalChecks: checks.length,

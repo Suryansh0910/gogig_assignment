@@ -206,14 +206,124 @@
 
         .check-name {
             font-weight: 600;
-            font-size: 1.1rem;
+            font-size: 1.05rem;
             margin-bottom: 0.5rem;
             text-transform: capitalize;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
         }
 
         .check-score {
             font-size: 0.875rem;
             color: var(--text-muted);
+            margin-bottom: 0.75rem;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            vertical-align: middle;
+        }
+
+        .badge-aws {
+            background: rgba(255, 153, 0, 0.15);
+            color: #ff9900;
+            border: 1px solid rgba(255, 153, 0, 0.3);
+        }
+
+        .badge-s3 {
+            background: rgba(255, 153, 0, 0.12);
+            color: #ff9900;
+            border: 1px solid rgba(255, 153, 0, 0.25);
+        }
+
+        .badge-local {
+            background: rgba(148, 163, 184, 0.15);
+            color: var(--text-muted);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+        }
+
+        .detail-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.4rem;
+            font-size: 0.82rem;
+            margin-bottom: 0.3rem;
+        }
+
+        .detail-key {
+            color: var(--text-muted);
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .detail-val {
+            color: var(--text-main);
+            word-break: break-word;
+        }
+
+        .detail-bool-true {
+            color: var(--success);
+            font-weight: 600;
+        }
+
+        .detail-bool-false {
+            color: var(--danger);
+            font-weight: 600;
+        }
+
+        .detail-bool-ok {
+            color: var(--success);
+            font-weight: 600;
+        }
+
+        .score-bar-wrap {
+            background: rgba(255,255,255,0.07);
+            border-radius: 4px;
+            height: 4px;
+            margin-bottom: 0.75rem;
+            overflow: hidden;
+        }
+
+        .score-bar {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.6s ease;
+        }
+
+        .s3-preview {
+            margin-top: 1.5rem;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--glass-border);
+        }
+
+        .s3-preview img {
+            width: 100%;
+            max-height: 280px;
+            object-fit: cover;
+            display: block;
+        }
+
+        .s3-label {
+            background: rgba(255,153,0,0.1);
+            border-bottom: 1px solid rgba(255,153,0,0.2);
+            padding: 0.5rem 1rem;
+            font-size: 0.8rem;
+            color: #ff9900;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-weight: 600;
         }
 
         #file-name-display {
@@ -398,13 +508,98 @@
             }
         }
 
+        const CHECK_LABELS = {
+            blur_detection:       'Blur Detection',
+            brightness_analysis:  'Brightness Analysis',
+            duplicate_detection:  'Duplicate Detection',
+            screenshot_detection: 'Screenshot Detection',
+            ocr_plate_validation: 'Number Plate OCR',
+            tampering_detection:  'Tampering Detection'
+        };
+
+        const DETAIL_LABELS = {
+            laplacianVariance:    'Sharpness variance',
+            threshold:            'Threshold',
+            verdict:              'Verdict',
+            meanBrightness:       'Mean brightness',
+            isDuplicate:          'Is duplicate',
+            minDistance:          'Hash distance',
+            duplicateJobId:       'Duplicate job',
+            heuristicsFired:      'Heuristics triggered',
+            software:             'Software tag',
+            dimensions:           'Dimensions',
+            extractedText:        'Detected text',
+            matchesIndianFormat:  'Plate format valid',
+            engine:               'OCR engine',
+            regex:                'Pattern',
+            dateInconsistency:    'Date inconsistency',
+            suspiciousSoftware:   'Suspicious software',
+            softwareField:        'Software',
+            reason:               'Note'
+        };
+
+        function formatDetailValue(key, val) {
+            if (val === null || val === undefined) return null;
+            if (key === 'engine') return null; // shown as badge instead
+            if (typeof val === 'boolean') {
+                const isGoodWhenTrue = ['matchesIndianFormat'].includes(key);
+                const isGoodWhenFalse = ['isDuplicate', 'dateInconsistency', 'suspiciousSoftware'].includes(key);
+                if (isGoodWhenTrue) return `<span class="${val ? 'detail-bool-true' : 'detail-bool-false'}">${val ? '✓ Yes' : '✗ No'}</span>`;
+                if (isGoodWhenFalse) return `<span class="${val ? 'detail-bool-false' : 'detail-bool-ok'}">${val ? '✗ Yes' : '✓ No'}</span>`;
+                return `<span class="detail-val">${val ? 'Yes' : 'No'}</span>`;
+            }
+            if (typeof val === 'number') {
+                return `<span class="detail-val">${Number.isInteger(val) ? val : val.toFixed(2)}</span>`;
+            }
+            if (typeof val === 'string' && val.startsWith('aws-')) {
+                return null; // engine shown as badge
+            }
+            return `<span class="detail-val">${val}</span>`;
+        }
+
+        function renderDetailRows(detail) {
+            return Object.entries(detail)
+                .filter(([k, v]) => v !== null && v !== undefined && k !== 'engine')
+                .map(([k, v]) => {
+                    const formatted = formatDetailValue(k, v);
+                    if (formatted === null) return '';
+                    const label = DETAIL_LABELS[k] || k.replace(/([A-Z])/g, ' $1').toLowerCase();
+                    return `<div class="detail-row"><span class="detail-key">${label}:</span>${formatted}</div>`;
+                }).join('');
+        }
+
+        function getEngineBadge(detail) {
+            if (!detail || !detail.engine) return '';
+            if (detail.engine === 'aws-rekognition') {
+                return `<span class="badge badge-aws">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M13.5 2.5l7 4v11l-7 4-7-4v-11l7-4z"/></svg>
+                    AWS Rekognition
+                </span>`;
+            }
+            return `<span class="badge badge-local">Tesseract OCR</span>`;
+        }
+
+        function getScoreColor(score) {
+            if (score >= 0.7) return 'var(--success)';
+            if (score >= 0.4) return '#f59e0b';
+            return 'var(--danger)';
+        }
+
         function renderResults(data) {
             resultsContainer.style.display = 'block';
-            
+
+            const storageIsS3 = data.storageBackend === 's3';
+            const storageBadge = storageIsS3
+                ? `<span class="badge badge-s3">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M13.5 2.5l7 4v11l-7 4-7-4v-11l7-4z"/></svg>
+                    AWS S3
+                   </span>`
+                : `<span class="badge badge-local">Local Storage</span>`;
+
             summaryCard.innerHTML = `
                 <div class="summary-stat">
                     <span>Overall Score</span>
-                    <strong style="color: ${data.summary.overallScore > 0.7 ? 'var(--success)' : (data.summary.overallScore > 0.4 ? '#f59e0b' : 'var(--danger)')}">
+                    <strong style="color: ${getScoreColor(data.summary.overallScore)}">
                         ${(data.summary.overallScore * 100).toFixed(0)}%
                     </strong>
                 </div>
@@ -413,20 +608,47 @@
                     <strong>${data.summary.passed} / ${data.summary.totalChecks}</strong>
                 </div>
                 <div class="summary-stat">
+                    <span>Storage</span>
+                    <strong style="font-size: 0.95rem;">${storageBadge}</strong>
+                </div>
+                <div class="summary-stat">
                     <span>File</span>
-                    <strong style="font-size: 1rem;">${data.filename.substring(0, 15)}${data.filename.length > 15 ? '...' : ''}</strong>
+                    <strong style="font-size: 0.9rem;">${data.filename.substring(0, 18)}${data.filename.length > 18 ? '…' : ''}</strong>
                 </div>
             `;
 
-            checkGrid.innerHTML = data.checks.map(check => `
-                <div class="check-card ${check.passed ? 'passed' : 'failed'}">
-                    <div class="check-name">${check.name.replace(/_/g, ' ')}</div>
-                    <div class="check-score">Score: ${(check.score * 100).toFixed(0)}%</div>
-                    <div style="margin-top: 0.75rem; font-size: 0.85rem; color: var(--text-main); word-break: break-word;">
-                        ${Object.entries(check.detail).slice(0, 4).map(([k, v]) => `<div><span style="color:var(--text-muted)">${k}:</span> ${v}</div>`).join('')}
+            if (storageIsS3 && data.storageUrl) {
+                const preview = document.createElement('div');
+                preview.className = 's3-preview';
+                preview.innerHTML = `
+                    <div class="s3-label">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M13.5 2.5l7 4v11l-7 4-7-4v-11l7-4z"/></svg>
+                        Stored in AWS S3 — ${data.storageUrl.split('/').pop()}
                     </div>
-                </div>
-            `).join('');
+                    <img src="${data.storageUrl}" alt="Uploaded image" onerror="this.parentElement.style.display='none'">
+                `;
+                summaryCard.insertAdjacentElement('afterend', preview);
+            }
+
+            checkGrid.innerHTML = data.checks.map(check => {
+                const label = CHECK_LABELS[check.name] || check.name.replace(/_/g, ' ');
+                const engineBadge = getEngineBadge(check.detail);
+                const scoreColor = getScoreColor(check.score);
+                const score = (check.score * 100).toFixed(0);
+                return `
+                    <div class="check-card ${check.passed ? 'passed' : 'failed'}">
+                        <div class="check-name">
+                            ${label}
+                            ${engineBadge}
+                        </div>
+                        <div class="check-score">Score: ${score}%</div>
+                        <div class="score-bar-wrap">
+                            <div class="score-bar" style="width:${score}%; background:${scoreColor};"></div>
+                        </div>
+                        <div>${renderDetailRows(check.detail)}</div>
+                    </div>
+                `;
+            }).join('');
         }
     </script>
 </body>
